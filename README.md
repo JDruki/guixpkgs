@@ -4,7 +4,9 @@
 
 # GuixPkgs
 
-**GuixPkgs** is an ambitious project to bridge the gap between the GNU Guix and Nix ecosystems. It translates the entirety of Guix's package definitions into pure, lazily-evaluable Nix expressions, without relying on Import From Derivation (IFD).
+GuixPkgs translates selected GNU Guix package graphs into checked-in Nix
+expressions. Nix evaluates them without Import From Derivation (IFD) or a
+running Guix daemon.
 
 ## Motivation
 
@@ -15,7 +17,7 @@ We want to allow users to transparently mix and match `nixpkgs` and Guix package
 ## Goal
 
 The goal of this repository is to act as a direct, automated translation layer:
-1. Translate all Guix derivations for a given commit into a large, deduplicated set of `.nix` files.
+1. Translate the dependency closures of selected Guix packages at a given commit into a deduplicated set of `.nix` files.
 2. Provide a standard Nixpkgs-like interface (`packages.x86_64-linux.<package>`) via a flake, mapping names to translated packages wrapped with Guix-generated runtime environments.
 3. Automatically sync and translate the upstream Guix tree on a recurring schedule (e.g. via GitHub Actions), recording the exact Guix state in `guix-metadata.json`.
 
@@ -52,10 +54,11 @@ package and its target runtime inputs, so tools work outside a Guix profile —
 without unioning those inputs into the visible package output.
 
 The wrapper keeps both halves reachable through `passthru`: `pkg.unwrapped` is
-the untouched translated derivation and `pkg.runtimeEnv` is the generated
-profile. Some packages need small, Nix-specific build adjustments; those are
-applied during translation by guix-transfer, not in this repo — see
-[Patching packages](#patching-packages).
+the raw translated main output and `pkg.runtimeEnv` is the generated profile.
+Packages that can serve as login shells also expose a package-relative
+`pkg.shellPath`; Bash currently reports `/bin/bash`. Some packages need small,
+Nix-specific build adjustments; those are applied during translation by
+guix-transfer, not in this repo — see [Patching packages](#patching-packages).
 
 ## Syncing Manually
 
@@ -66,10 +69,15 @@ You can manually trigger the translation of Guix derivations into Nix expression
 nix run .#sync
 ```
 
-After the sync completes, make sure to add the newly generated files to your git index so that Nix can evaluate them:
+Package specifications are listed in `%package-names` in
+`get-all-derivations.scm`. Guix variables that are not package specifications
+belong in `%aliased-packages`, which preserves their requested public names.
+
+After the sync completes, add the generated package tree and metadata so Nix
+can evaluate them:
 
 ```bash
-git add pkgs/
+git add pkgs/ guix-metadata.json
 ```
 
 ## Binary Cache
@@ -137,13 +145,9 @@ nix shell .#zile --option filter-syscalls false --option sandbox false
 
 ## Patching packages
 
-The derivations under `pkgs/` are a **faithful** copy of Guix — regenerated
-wholesale on every sync, so hand-editing them is pointless (changes are
-overwritten). But some packages need small, Nix-specific adjustments to build
-under Nix's daemon, because Guix's build sandbox and Nix's are not identical
-(e.g. bootstrap toolchain test suites probe signals, file descriptors and
-`/bin/sh` differently and can fail a `check` phase under Nix that passed upstream
-in Guix).
+`pkgs/store`, `pkgs/sources`, and `pkgs/by-name` are generated and replaced on
+every sync. Do not edit them by hand. Some packages need small, Nix-specific
+adjustments because the Guix and Nix build sandboxes differ.
 
 **All such fixes are applied at translation time, in
 [guix-transfer](https://github.com/fzakaria/guix-transfer) — never as a Nix
@@ -174,6 +178,7 @@ build and all downstream references stay consistent:
 | Problem | Handled by |
 | --- | --- |
 | Bootstrap test suites fail under Nix's sandbox | `guix-transfer --disable-tests` rewrites `#:tests? #t` → `#:tests? #f` in every `*-builder` script. The `nix run .#sync` app passes this flag. |
+| An installer applies setuid or setgid modes to a Nix store output | guix-transfer disables those modes beside the builder's existing install-time ownership guard before paths are hashed. |
 | `disallowedReferences` (etc.) point at an untranslated `/gnu/store` path, which Nix rejects as an illegal reference specifier | guix-transfer filters invalid specifiers out of the `allowed`/`disallowed` `References`/`Requisites` attributes. |
 
 If a new package needs a tweak, add it to guix-transfer (e.g. a builder
