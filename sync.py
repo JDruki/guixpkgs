@@ -187,13 +187,21 @@ def translate(derivations: list[GuixDerivation]) -> list[TransferredPackage]:
     return packages
 
 
+SHELL_PATHS = {
+    "bash": "/bin/bash",
+}
+
+
 def by_name_entry(package: TransferredPackage) -> str:
     """Render a by-name entry: a ``{ pkgs }`` function building the wrapper."""
+    shell_path = SHELL_PATHS.get(package.name)
+    shell_line = f'  shellPath = "{shell_path}";\n' if shell_path else ""
     return (
         "{ pkgs }:\n"
         "pkgs.callPackage ../../wrap-guix-package.nix {\n"
         f"  package = import ../../store/{package.package_store_filename};\n"
         f"  runtimeEnv = import ../../store/{package.runtime_env_store_filename};\n"
+        f"{shell_line}"
         "}\n"
     )
 
@@ -240,7 +248,9 @@ def main() -> None:
     write_metadata()
 
     print(f"Done! Wrote {written} packages under {BY_NAME}.")
-    print("IMPORTANT: Run 'git add pkgs/' so Nix can see the new files!")
+    print(
+        "IMPORTANT: Run 'git add pkgs/ guix-metadata.json' so Nix can see the generated files."
+    )
 
 
 if __name__ == "__main__":
