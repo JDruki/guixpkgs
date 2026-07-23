@@ -15,6 +15,7 @@
 ;;; translated programs run correctly outside a Guix profile.
 
 (use-modules (gnu packages)
+             (gnu packages linux)
              (guix derivations)
              (guix gexp)
              (guix packages)
@@ -28,6 +29,49 @@
   ;; Unknown names are caught and skipped below, so this list is safe to extend.
   '("hello" "bash"
     "coreutils"
+    "shepherd"
+    ;; Interactive and administrative userland.
+    "guile"
+    "grep"
+    "sed"
+    "gawk"
+    "findutils"
+    "diffutils"
+    "procps"
+    "htop"
+    "util-linux"
+    "shadow"
+    "sudo"
+    "tmux"
+    "less"
+    "nano"
+    "ncurses"
+    "kbd"
+    "tar"
+    "gzip"
+    "bzip2"
+    "xz"
+    "cpio"
+    "patch"
+    "zstd"
+    "which"
+    "time"
+    "acl"
+    "attr"
+    "libcap"
+    "kmod"
+    "e2fsprogs"
+    "inetutils"
+    ;; Networking.
+    "curl"
+    "nss-certs"
+    "iproute2"
+    "iputils"
+    "dhcpcd"
+    "openresolv"
+    ;; Login, device management, and service prerequisites.
+    "linux-pam"
+    "eudev"
     ;; Guile libraries packaged in Guix but absent from nixpkgs -- these make
     ;; the strongest "transfer" demo (nixpkgs simply has no equivalent).
     "guile-png" ;pure-Scheme PNG encoder/decoder
@@ -38,6 +82,11 @@
     "g-golf" ;GObject-introspection bindings (drive GTK from Scheme)
     "guile-cv" ;computer-vision library
     "guile-studio"))
+
+(define %aliased-packages
+  ;; Preserve requested public names for package objects that are not resolved
+  ;; through package specifications.
+  (list (cons "linux-libre-lts" linux-libre-lts)))
 
 (define (input->manifest-entries input)
   "Convert a single package INPUT tuple into a list of manifest entries.
@@ -186,30 +235,37 @@ entirely so the Nix wrapper can skip wrapping its binaries. Build options:
                                         #:substitutable? #f
                                         #:properties '((type . guixpkgs-runtime-env)))))))
 
-(define (emit-package store pkg-name)
-  "Print the TSV row for PKG-NAME, or a diagnostic on failure.
+(define (emit-package store public-name package-or-specification)
+  "Print the TSV row for PUBLIC-NAME, or a diagnostic on failure.
 
-Resolves the package, computes its faithful Nix-bound derivation and its
-runtime-env derivation, and prints \"name\\tpackage-drv\\truntime-env-drv\".
-Any failure (unknown package, build-graph error) is caught and logged to stderr
-so one bad name never aborts the whole run. Grafts are disabled so the emitted
+PACKAGE-OR-SPECIFICATION is either a package object or a package specification
+string.  Resolve it, compute its faithful Nix-bound derivation and runtime-env
+derivation, and print \"name\\tpackage-drv\\truntime-env-drv\".  Any failure
+(unknown package, build-graph error) is caught and logged to stderr so one bad
+request never aborts the whole run.  Grafts are disabled so the emitted
 derivations match exactly what guix-transfer will translate."
   (catch #t
          (lambda ()
            (parameterize ((%graft? #f))
              (let* ((package
-                      (specification->package pkg-name))
+                      (if (package? package-or-specification)
+                          package-or-specification
+                          (specification->package package-or-specification)))
                     (package-drv (package-derivation store package
                                                      "x86_64-linux"
                                                      #:graft? #f))
                     (runtime-env-drv (runtime-env-derivation store package)))
-               (format #t "~a\t~a\t~a\n"
-                       (package-name package)
+               (format #t "~a\t~a\t~a\n" public-name
                        (derivation-file-name package-drv)
                        (derivation-file-name runtime-env-drv)))))
          (lambda _
-           (format (current-error-port) "Failed: ~a\n" pkg-name))))
+           (format (current-error-port) "Failed: ~a\n" public-name))))
 
 (with-store store
             (for-each (lambda (name)
-                        (emit-package store name)) %package-names))
+                        (emit-package store name name)) %package-names)
+            (for-each (match-lambda
+                        ((public-name . package) (emit-package store
+                                                               public-name
+                                                               package)))
+                      %aliased-packages))

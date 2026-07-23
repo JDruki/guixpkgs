@@ -19,20 +19,25 @@
   makeWrapper,
   package,
   runtimeEnv,
+  shellPath ? null,
 }:
 
+let
+  packageOutput = package.out or package;
+in
 symlinkJoin {
   name = "${package.name or "guix-package"}-guix-wrapped";
-  paths = [ package ];
+  paths = [ packageOutput ];
   nativeBuildInputs = [ makeWrapper ];
 
   # Keep the package and its runtime environment reachable from the result, and
   # tied together: `result.unwrapped` is the untouched derivation and
   # `result.runtimeEnv` is the profile that drives the wrappers.
   passthru = {
-    unwrapped = package;
+    unwrapped = packageOutput;
     inherit runtimeEnv;
-  };
+  }
+  // lib.optionalAttrs (shellPath != null) { inherit shellPath; };
 
   # Only wrap when the runtime env actually produced an etc/profile. Packages
   # that export no search paths get none, so we skip the wrapper overhead and
@@ -43,10 +48,18 @@ symlinkJoin {
         [ -d "$dir" ] || continue
         for program in "$dir"/*; do
           # Skip Guix's hidden ".<name>-real" originals (already wrapped by
-          # Guix); wrapping them would double-wrap an executable.
+          # Guix). Also leave symlink aliases pointing at the wrapped real
+          # executable; wrapping both breaks argv[0]-dispatched multicall tools.
           case "$(basename "$program")" in
             .*) continue ;;
           esac
+          if [ -L "$program" ]; then
+            target=$(readlink "$program")
+            case "$target" in
+              /*) [ -L "$target" ] && continue ;;
+              *) continue ;;
+            esac
+          fi
           [ -f "$program" ] && [ -x "$program" ] || continue
           wrapProgram "$program" \
             --run "export GUIX_PROFILE=${runtimeEnv}" \
