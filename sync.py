@@ -9,6 +9,7 @@ Pipeline:
   3. Lay out ``pkgs/by-name/<letter>/<name>.nix`` wrappers that source the
      runtime environment around the translated package.
   4. Record provenance in ``guix-metadata.json``.
+  5. Reformat the generated tree with ``nix fmt``.
 
 The two ``@...@`` constants below are substituted by ``flake.nix`` at build
 time; running this module outside the flake leaves them as literal placeholders.
@@ -224,6 +225,29 @@ def write_by_name(packages: list[TransferredPackage]) -> int:
     return written
 
 
+def format_pkgs() -> None:
+    """Reformat the generated tree with ``nix fmt``.
+
+    treefmt excludes ``pkgs/store`` and ``pkgs/sources`` (see flake.nix), so in
+    practice this only touches the by-name wrappers -- enough to keep
+    ``nix flake check``'s formatting check green after a sync. Formatting is
+    cosmetic, so a missing ``nix`` or a failing formatter warns instead of
+    throwing away a completed sync.
+    """
+    print("Formatting generated files...")
+    if shutil.which("nix") is None:
+        print("warning: 'nix' is not on PATH; skipping 'nix fmt'", file=sys.stderr)
+        return
+    try:
+        run(["nix", "fmt", str(PKGS)])
+    except subprocess.CalledProcessError as error:
+        print(
+            f"warning: 'nix fmt' failed with exit code {error.returncode}; "
+            "the generated files are left unformatted",
+            file=sys.stderr,
+        )
+
+
 def write_metadata() -> None:
     """Record the synced channel, commit, and timestamp."""
     print("Writing metadata...")
@@ -246,6 +270,7 @@ def main() -> None:
     packages = translate(derivations)
     written = write_by_name(packages)
     write_metadata()
+    format_pkgs()
 
     print(f"Done! Wrote {written} packages under {BY_NAME}.")
     print(
