@@ -81,7 +81,8 @@
     "guile-pipe" ;threading/pipe macros
     "g-golf" ;GObject-introspection bindings (drive GTK from Scheme)
     "guile-cv" ;computer-vision library
-    "guile-studio"))
+    "guile-studio"
+    "openjdk"))
 
 (define %aliased-packages
   ;; Preserve requested public names for package objects that are not resolved
