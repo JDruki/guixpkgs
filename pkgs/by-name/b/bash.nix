@@ -1,5 +1,6 @@
 { pkgs }:
 pkgs.callPackage ../../wrap-guix-package.nix {
-  package = import ../../store/6gznwawm88kxfavwyklghwhx8hrif0qm-bash-5.2.37.nix;
-  runtimeEnv = import ../../store/ffd06ph8x0zmiy2w9q7q59q0j9hk9hjr-bash-runtime-env.nix;
+  package = import ../../store/bsdvxhipmj95vi878dsvyp64flmhd206-bash-5.2.37.nix;
+  runtimeEnv = import ../../store/1lmzsx9b5cgjai3rg6290msrzjpgyx12-bash-runtime-env.nix;
+  shellPath = "/bin/bash";
 }
