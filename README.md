@@ -133,15 +133,43 @@ In your own projects, you can mix and match `nixpkgs` and `guixpkgs` seamlessly 
 Run standard Nix commands against Guix packages effortlessly:
 
 > [!NOTE]
-> Building Guix packages from source within Nix can sometimes fail during bootstrap (e.g., `chmod: Operation not permitted`). This is often because Guix's bootstrap scripts try to restore `SETGID` bits, which the Nix sandbox strictly blocks. To successfully build from source, you may need to disable syscall filtering and/or the sandbox temporarily.
+> Building Guix packages from source within Nix can sometimes fail during bootstrap (e.g., `chmod: Operation not permitted`). This is often because Guix's bootstrap scripts try to restore `SETGID` bits, which the Nix sandbox strictly blocks. To successfully build from source, you need to disable syscall filtering.
+
+> [!IMPORTANT]
+> Building from source also needs `/bin/sh` **removed** from the Nix sandbox
+> (`--option sandbox-paths ''`), otherwise some packages build differently than
+> they do under `guix-daemon`. See [Sandbox parity](#sandbox-parity) below.
+> Prefer this over `--option sandbox false`, which exposes the host's `/bin/sh`
+> and the rest of the host filesystem.
 
 ```bash
 # Build the GNU Hello package from Guix
-nix build .#hello --option filter-syscalls false --option sandbox false
+nix build .#hello --option filter-syscalls false --option sandbox-paths ''
 
 # Drop into a shell with Zile from Guix
-nix shell .#zile --option filter-syscalls false --option sandbox false
+nix shell .#zile --option filter-syscalls false --option sandbox-paths ''
 ```
+
+## Sandbox parity
+
+Substitutes from the binary cache are unaffected by this section — it only
+matters when you build from source.
+
+A translated derivation is a faithful copy of Guix's, but the *daemon* running it
+is not. `guix-daemon`'s container has no `/bin` at all, while Nix's sandbox
+bind-mounts a `/bin/sh`; the `sandbox-paths` default is compiled into the Nix
+binary, and nixpkgs builds Nix with `-Dsandbox-shell=<busybox>/bin/busybox`, so
+on a typical install it is present:
+
+```bash
+nix config show | grep sandbox-paths
+# sandbox-paths = /bin/sh=/nix/store/…-busybox-1.37.0/bin/busybox …
+```
+
+Guix packages are built on the assumption that no `/bin/sh` exists, which is why
+Guix patches shebangs so aggressively. A build step that quietly depends on one
+takes a different path under Nix, and the difference cannot be expressed in the
+derivation — so it has to be a build-time option.
 
 ## Using the overlay
 
