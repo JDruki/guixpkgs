@@ -1,5 +1,5 @@
 { pkgs }:
 pkgs.callPackage ../../wrap-guix-package.nix {
-  package = import ../../store/40rya107jfjyz41rjvazwlcrqwm67avr-htop-3.4.1.nix;
-  runtimeEnv = import ../../store/f91kz02iqx864wdf83vf8d1l439jjjzx-htop-runtime-env.nix;
+  package = import ../../store/zmm2ksjs93l8s6jq7m8z3i9mkdc8cxdq-htop-3.4.1.nix;
+  runtimeEnv = import ../../store/5zy7q6ji8rwnqayj05npg5dz6gvsn5bz-htop-runtime-env.nix;
 }
