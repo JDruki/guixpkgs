@@ -143,6 +143,98 @@ nix build .#hello --option filter-syscalls false --option sandbox false
 nix shell .#zile --option filter-syscalls false --option sandbox false
 ```
 
+## Using the overlay
+
+Rather than reaching into `guixpkgs.packages.<system>`, you can fold GuixPkgs
+into your own `nixpkgs` instance with an overlay. This is a *consumer-facing*
+overlay and has nothing to do with
+[Why not a Nix overlay?](#why-not-a-nix-overlay) below, which is about how
+packages are patched inside this repository.
+
+### `overlays.default` — Guix beside Nixpkgs
+
+The default overlay is purely additive: it puts the whole translated set under
+`pkgs.guixPackages` and changes nothing else. Nixpkgs attributes keep their
+Nixpkgs meaning.
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    guixpkgs.url = "github:fzakaria/guixpkgs";
+  };
+
+  outputs = { self, nixpkgs, guixpkgs }:
+  let
+    system = "x86_64-linux";
+    pkgs = import nixpkgs {
+      inherit system;
+      overlays = [ guixpkgs.overlays.default ];
+    };
+  in {
+    devShells.${system}.default = pkgs.mkShell {
+      buildInputs = [
+        pkgs.git                   # Nixpkgs
+        pkgs.hello                 # Nixpkgs' hello
+        pkgs.guixPackages.hello    # Guix' hello
+      ];
+    };
+  };
+}
+```
+
+### `lib.mkOverlay` — let Guix win for chosen names
+
+To have `pkgs.<name>` itself resolve to the Guix package, build an overlay with
+`guixpkgs.lib.mkOverlay`. It still adds `pkgs.guixPackages`; `only` says which
+names are additionally shadowed at the top level.
+
+```nix
+overlays = [
+  # `pkgs.hello` and `pkgs.tmux` are now Guix builds.
+  (guixpkgs.lib.mkOverlay { only = [ "hello" "tmux" ]; })
+];
+```
+
+The two package sets often spell the same program differently. Pass an
+attribute set — `nixpkgs attribute = "guix package"` — when they disagree:
+
+```nix
+overlays = [
+  (guixpkgs.lib.mkOverlay {
+    only = {
+      gnused = "sed";           # Guix calls it `sed`
+      nss-cacert = "nss-certs";
+    };
+  })
+];
+```
+
+`only = null` shadows every name GuixPkgs provides. Read the next section
+before you try it.
+
+A name in `only` that GuixPkgs does not package is an evaluation error rather
+than a silent no-op.
+
+On systems other than `x86_64-linux` there are no translated packages to hand
+out, so the overlay stays out of the way instead of breaking the package set:
+every shadowed attribute keeps its Nixpkgs value, and reading
+`pkgs.guixPackages.<name>` fails with an error naming the one supported system.
+
+Both overlays produce the same derivations as `guixpkgs.packages.<system>`, so
+the [binary cache](#binary-cache) still applies.
+
+### What replacement can and cannot do
+
+Shadowing works for **leaf packages** — the ones you install and run yourself.
+It does not work for packages Nixpkgs itself builds against, and
+`only = null` is a curiosity rather than a way to run Nixpkgs on Guix.
+
+A translated Guix package is a plain derivation wrapped with `symlinkJoin`. It
+has none of the conventions Nixpkgs expressions assume of their dependencies:
+no split outputs, no `override`/`overrideAttrs`, no `meta`, no `passthru`
+beyond what the wrapper adds.
+
 ## Patching packages
 
 `pkgs/store`, `pkgs/sources`, and `pkgs/by-name` are generated and replaced on
