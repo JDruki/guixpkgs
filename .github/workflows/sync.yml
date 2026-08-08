@@ -1,9 +1,16 @@
-name: Sync upstream Guix
+name: Sync, build, and cache Guix packages
 
 on:
   schedule:
     - cron: '0 0 * * 0' # Run weekly on Sundays
   workflow_dispatch: # Allow manual triggers
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-guixpkgs
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -17,17 +24,31 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
+            accept-flake-config = true
 
       - name: Install Guix
         uses: PromyLOPh/guix-install-action@v1
 
+      - name: Configure Cachix
+        uses: cachix/cachix-action@v17
+        with:
+          name: jdruki-guixpkgs
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
       - name: Run Sync App
         run: nix run .#sync
 
+      - name: Verify and build Podman
+        run: |
+          test -f pkgs/by-name/p/podman.nix
+          nix build --print-build-logs .#podman \
+            --option filter-syscalls false \
+            --option sandbox-paths ''
+
       - name: Commit and Push Changes
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "みさき りゅう"
+          git config user.email "86152294+JDruki@users.noreply.github.com"
           git add pkgs guix-metadata.json
           
           # Only commit if there are actually changes

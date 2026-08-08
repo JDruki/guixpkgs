@@ -69,6 +69,8 @@
     "iputils"
     "dhcpcd"
     "openresolv"
+    ;; Containers.
+    "podman"
     ;; Login, device management, and service prerequisites.
     "linux-pam"
     "eudev"
