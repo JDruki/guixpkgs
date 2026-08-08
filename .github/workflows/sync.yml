@@ -47,9 +47,11 @@ jobs:
       - name: Verify and build Podman
         run: |
           test -f pkgs/by-name/p/podman.nix
+          # libseccomp's Autoconf macros invoke m4_esyscmd, which uses /bin/sh.
+          # Keep Nix's sandbox shell available; only disable the syscall filter
+          # needed by the translated Guix bootstrap.
           nix build --print-build-logs .#podman \
-            --option filter-syscalls false \
-            --option sandbox-paths ''
+            --option filter-syscalls false
 
       - name: Commit and Push Changes
         run: |
