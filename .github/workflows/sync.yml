@@ -38,6 +38,12 @@ jobs:
       - name: Run Sync App
         run: nix run .#sync
 
+      # Nix only includes tracked or staged files when it evaluates a Git flake.
+      # The sync creates the new podman wrapper, so stage generated output before
+      # asking the flake for .#podman.
+      - name: Stage generated package set
+        run: git add pkgs guix-metadata.json
+
       - name: Verify and build Podman
         run: |
           test -f pkgs/by-name/p/podman.nix
